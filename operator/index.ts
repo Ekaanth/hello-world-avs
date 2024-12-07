@@ -15,14 +15,14 @@ const wallet = new ethers.Wallet(process.env.PRIVATE_KEY!, provider);
 /// TODO: Hack
 let chainId = 31337;
 
-const avsDeploymentData = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../contracts/deployments/hello-world/${chainId}.json`), 'utf8'));
+const avsDeploymentData = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../contracts/deployments/stablecoin_avs/${chainId}.json`), 'utf8'));
 // Load core deployment data
 const coreDeploymentData = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../contracts/deployments/core/${chainId}.json`), 'utf8'));
 
 
 const delegationManagerAddress = coreDeploymentData.addresses.delegation; // todo: reminder to fix the naming of this contract in the deployment file, change to delegationManager
 const avsDirectoryAddress = coreDeploymentData.addresses.avsDirectory;
-const helloWorldServiceManagerAddress = avsDeploymentData.addresses.helloWorldServiceManager;
+const stablecoinAVSServiceManagerAddress = avsDeploymentData.addresses.stablecoinAVSServiceManager;
 const ecdsaStakeRegistryAddress = avsDeploymentData.addresses.stakeRegistry;
 
 
@@ -30,15 +30,14 @@ const ecdsaStakeRegistryAddress = avsDeploymentData.addresses.stakeRegistry;
 // Load ABIs
 const delegationManagerABI = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../abis/IDelegationManager.json'), 'utf8'));
 const ecdsaRegistryABI = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../abis/ECDSAStakeRegistry.json'), 'utf8'));
-const helloWorldServiceManagerABI = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../abis/HelloWorldServiceManager.json'), 'utf8'));
+const stablecoinAVSServiceManagerABI = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../abis/StablecoinAVSServiceManager.json'), 'utf8'));
 const avsDirectoryABI = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../abis/IAVSDirectory.json'), 'utf8'));
 
 // Initialize contract objects from ABIs
 const delegationManager = new ethers.Contract(delegationManagerAddress, delegationManagerABI, wallet);
-const helloWorldServiceManager = new ethers.Contract(helloWorldServiceManagerAddress, helloWorldServiceManagerABI, wallet);
+const stablecoinAVSServiceManager = new ethers.Contract(stablecoinAVSServiceManagerAddress, stablecoinAVSServiceManagerABI, wallet);
 const ecdsaRegistryContract = new ethers.Contract(ecdsaStakeRegistryAddress, ecdsaRegistryABI, wallet);
 const avsDirectory = new ethers.Contract(avsDirectoryAddress, avsDirectoryABI, wallet);
-
 
 const signAndRespondToTask = async (taskIndex: number, taskCreatedBlock: number, taskName: string) => {
     const message = `Hello, ${taskName}`;
@@ -55,7 +54,7 @@ const signAndRespondToTask = async (taskIndex: number, taskCreatedBlock: number,
         [operators, signatures, ethers.toBigInt(await provider.getBlockNumber()-1)]
     );
 
-    const tx = await helloWorldServiceManager.respondToTask(
+    const tx = await stablecoinAVSServiceManager.respondToTask(
         { name: taskName, taskCreatedBlock: taskCreatedBlock },
         taskIndex,
         signedTask
@@ -92,7 +91,7 @@ const registerOperator = async () => {
     // Calculate the digest hash, which is a unique value representing the operator, avs, unique value (salt) and expiration date.
     const operatorDigestHash = await avsDirectory.calculateOperatorAVSRegistrationDigestHash(
         wallet.address, 
-        await helloWorldServiceManager.getAddress(), 
+        await stablecoinAVSServiceManager.getAddress(), 
         salt, 
         expiry
     );
@@ -123,9 +122,9 @@ const monitorNewTasks = async () => {
     //console.log(`Creating new task "EigenWorld"`);
     //await helloWorldServiceManager.createNewTask("EigenWorld");
 
-    helloWorldServiceManager.on("NewTaskCreated", async (taskIndex: number, task: any) => {
-        console.log(`New task detected: Hello, ${task.name}`);
-        await signAndRespondToTask(taskIndex, task.taskCreatedBlock, task.name);
+    stablecoinAVSServiceManager.on("NewCheckpointCreated", async (checkpointId: number, checkpoint: number) => {
+        console.log(`New task detected: Hello, ${checkpointId}`);
+        // await signAndRespondToTask(taskIndex, task.taskCreatedBlock, task.name);
     });
 
     console.log("Monitoring for new tasks...");

@@ -11,12 +11,16 @@ import {TransparentUpgradeableProxy} from
 import {Quorum} from "@eigenlayer-middleware/src/interfaces/IECDSAStakeRegistryEventsAndErrors.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {IDelegationManager} from "@eigenlayer/contracts/interfaces/IDelegationManager.sol";
+import {stdJson} from "forge-std/StdJson.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {console2} from "forge-std/Test.sol";
 
 library StablecoinAVSDeploymentLib {
+    using stdJson for string;
+    using Strings for *;
     using UpgradeableProxyLib for address;
 
     Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
-
 
     struct DeploymentData {
         address stakeRegistry;
@@ -33,8 +37,8 @@ library StablecoinAVSDeploymentLib {
         CoreDeploymentLib.DeploymentData memory core,
         Quorum memory quorum,
         address collateralManager
-    ) internal returns (DeploymentData memory deploymentData) {
-         DeploymentData memory result;
+    ) internal returns (DeploymentData memory result) {
+        DeploymentData memory result;
 
         // First, deploy upgradeable proxy contracts that will point to the implementations.
         result.stablecoinAVSServiceManager = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
@@ -42,7 +46,7 @@ library StablecoinAVSDeploymentLib {
         // Deploy the implementation contracts, using the proxy contracts as inputs
         address stakeRegistryImpl =
             address(new ECDSAStakeRegistry(IDelegationManager(core.delegationManager)));
-        address helloWorldServiceManagerImpl = address(
+        address stablecoinAVSServiceManagerImpl = address(
             new StablecoinAVSServiceManager(
                 core.avsDirectory, result.stakeRegistry, core.rewardsCoordinator, core.delegationManager, collateralManager
             )
@@ -52,83 +56,94 @@ library StablecoinAVSDeploymentLib {
             ECDSAStakeRegistry.initialize, (result.stablecoinAVSServiceManager, 0, quorum)
         );
         UpgradeableProxyLib.upgradeAndCall(result.stakeRegistry, stakeRegistryImpl, upgradeCall);
-        UpgradeableProxyLib.upgrade(result.stablecoinAVSServiceManager, helloWorldServiceManagerImpl);
+        UpgradeableProxyLib.upgrade(result.stablecoinAVSServiceManager, stablecoinAVSServiceManagerImpl);
 
         return result;
     }
 
-    function writeDeploymentJson(DeploymentData memory deploymentData) internal {
-        // Create directory if it doesn't exist
-        vm.createDir("deployments/stablecoin_avs", true);
-        string memory deploymentJsonString = vm.serializeAddress(
-            "deployment",
-            "stakeRegistry",
-            deploymentData.stakeRegistry
-        );
-        deploymentJsonString = vm.serializeAddress(
-            "deployment",
-            "stablecoinAVSServiceManager",
-            deploymentData.stablecoinAVSServiceManager
-        );
-        deploymentJsonString = vm.serializeAddress(
-            "deployment",
-            "strategy",
-            deploymentData.strategy
-        );
-        deploymentJsonString = vm.serializeAddress(
-            "deployment",
-            "token",
-            deploymentData.token
-        );
-        deploymentJsonString = vm.serializeAddress(
-            "deployment",
-            "eigUSD",
-            deploymentData.eigUSD
-        );
-        deploymentJsonString = vm.serializeAddress(
-            "deployment",
-            "collateralManager",
-            deploymentData.collateralManager
-        );
-        deploymentJsonString = vm.serializeAddress(
-            "deployment",
-            "priceOracle",
-            deploymentData.priceOracle
-        );
+    function writeDeploymentJson(DeploymentData memory data) internal {
+        writeDeploymentJson("deployments/stablecoin_avs/", block.chainid, data);
+    }
 
-        vm.writeJson(deploymentJsonString, "deployments/stablecoin_avs/deployment.json");
+    function writeDeploymentJson(
+        string memory outputPath,
+        uint256 chainId,
+        DeploymentData memory data
+    ) internal {
+        address proxyAdmin = address(UpgradeableProxyLib.getProxyAdmin(data.stablecoinAVSServiceManager));
+        string memory deploymentData = _generateDeploymentJson(data, proxyAdmin);
+
+        string memory fileName = string.concat(outputPath, vm.toString(chainId), ".json");
+        if (!vm.exists(outputPath)) {
+            vm.createDir(outputPath, true);
+        }
+
+        vm.writeFile(fileName, deploymentData);
+        console2.log("Deployment artifacts written to:", fileName);
+    }
+
+    function _generateDeploymentJson(
+        DeploymentData memory data,
+        address proxyAdmin
+    ) private view returns (string memory) {
+        return string.concat(
+            '{"lastUpdate":{"timestamp":"',
+            vm.toString(block.timestamp),
+            '","block_number":"',
+            vm.toString(block.number),
+            '"},"addresses":',
+            _generateContractsJson(data, proxyAdmin),
+            "}"
+        );
+    }
+
+    function _generateContractsJson(
+        DeploymentData memory data,
+        address proxyAdmin
+    ) private view returns (string memory) {
+        return string.concat(
+            '{"proxyAdmin":"',
+            proxyAdmin.toHexString(),
+            '","stablecoinAVSServiceManager":"',
+            data.stablecoinAVSServiceManager.toHexString(),
+            '","stablecoinAVSServiceManagerImpl":"',
+            data.stablecoinAVSServiceManager.getImplementation().toHexString(),
+            '","stakeRegistry":"',
+            data.stakeRegistry.toHexString(),
+            '","stakeRegistryImpl":"',
+            data.stakeRegistry.getImplementation().toHexString(),
+            '","strategy":"',
+            data.strategy.toHexString(),
+            '","token":"',
+            data.token.toHexString(),
+            '","eigUSD":"',
+            data.eigUSD.toHexString(),
+            '","collateralManager":"',
+            data.collateralManager.toHexString(),
+            '","priceOracle":"',
+            data.priceOracle.toHexString(),
+            '"}'
+        );
     }
 
     function readDeploymentJson(
         string memory path,
         uint256 chainId
-    ) internal view returns (DeploymentData memory) {
-        string memory chainIdString = vm.toString(chainId);
-        string memory deploymentJson = vm.readFile(
-            string.concat(path, chainIdString, "/deployment.json")
-        );
+    ) internal returns (DeploymentData memory) {
+        string memory fileName = string.concat(path, vm.toString(chainId), ".json");
+        require(vm.exists(fileName), "Deployment file does not exist");
+        
+        string memory json = vm.readFile(fileName);
+        DeploymentData memory data;
+        
+        data.stablecoinAVSServiceManager = json.readAddress(".addresses.stablecoinAVSServiceManager");
+        data.stakeRegistry = json.readAddress(".addresses.stakeRegistry");
+        data.strategy = json.readAddress(".addresses.strategy");
+        data.token = json.readAddress(".addresses.token");
+        data.eigUSD = json.readAddress(".addresses.eigUSD");
+        data.collateralManager = json.readAddress(".addresses.collateralManager");
+        data.priceOracle = json.readAddress(".addresses.priceOracle");
 
-        DeploymentData memory deploymentData;
-        deploymentData.stakeRegistry = vm.parseJsonAddress(
-            deploymentJson,
-            ".stakeRegistry"
-        );
-        deploymentData.stablecoinAVSServiceManager = vm.parseJsonAddress(
-            deploymentJson,
-            ".stablecoinAVSServiceManager"
-        );
-        deploymentData.strategy = vm.parseJsonAddress(deploymentJson, ".strategy");
-        deploymentData.token = vm.parseJsonAddress(deploymentJson, ".token");
-        deploymentData.eigUSD = vm.parseJsonAddress(deploymentJson, ".eigUSD");
-        deploymentData.collateralManager = vm.parseJsonAddress(
-            deploymentJson,
-            ".collateralManager"
-        );
-        deploymentData.priceOracle = vm.parseJsonAddress(
-            deploymentJson,
-            ".priceOracle"
-        );
-
-        return deploymentData;
+        return data;
     }
 } 

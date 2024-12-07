@@ -10,7 +10,8 @@ const contractsToExtract = [
   'IDelegationManager',
   'ECDSAStakeRegistry',
   'HelloWorldServiceManager',
-  'StablecoinAVSServiceManager'
+  'StablecoinAVSServiceManager',
+  'collateralManager',
 ];
 
 if (!fs.existsSync(abiDir)) {

@@ -10,61 +10,83 @@ const wallet = new ethers.Wallet(process.env.PRIVATE_KEY!, provider);
 let chainId = 31337;
 
 const avsDeploymentData = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../contracts/deployments/stablecoin_avs/${chainId}.json`), 'utf8'));
-const stablecoinAVSServiceManagerAddress = avsDeploymentData.stablecoinAVSServiceManager;
-const stablecoinAVSServiceManagerABI = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../abis/StablecoinAVSServiceManager.json'), 'utf8'));
 
-// Initialize contract objects from ABIs
+if (!avsDeploymentData || !avsDeploymentData.addresses) {
+    throw new Error("Deployment data or address is undefined");
+}
+
+const stablecoinAVSServiceManagerAddress = avsDeploymentData.addresses.stablecoinAVSServiceManager;
+const stablecoinAVSServiceManagerABI = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../abis/StablecoinAVSServiceManager.json'), 'utf8'));
 const stablecoinAVS = new ethers.Contract(stablecoinAVSServiceManagerAddress, stablecoinAVSServiceManagerABI, wallet);
 
-// Function to generate random collateral values (using smaller numbers)
-function generateRandomValues(): { collateral: bigint, supply: bigint } {
-    // Random collateral between 15-25 ETH (with 18 decimals)
-    const collateral = BigInt(Math.floor(Math.random() * 10 + 15)) * BigInt(10**18);
-    // Random supply between 10-15 USD (with 18 decimals)
-    const supply = BigInt(Math.floor(Math.random() * 5 + 10)) * BigInt(10**18);
-    return { collateral, supply };
+// Simulation constants
+const CRITICAL_RATIO = 130; // 130%
+const INITIAL_PRICE = BigInt(2000) * BigInt(10**18); // Initial price $2000
+const MAX_PRICE_CHANGE = 10; // Max 10% price change per interval
+
+let currentPrice = INITIAL_PRICE;
+
+function simulatePriceChange(): bigint {
+    // Random change between -MAX_PRICE_CHANGE and +MAX_PRICE_CHANGE percent
+    const changePercent = (Math.random() * 2 - 1) * MAX_PRICE_CHANGE;
+    const change = (currentPrice * BigInt(Math.floor(changePercent * 100))) / BigInt(10000);
+    currentPrice = currentPrice + change;
+    return currentPrice;
 }
 
 async function createNewCheckpoint() {
     try {
-        // Check balance first
-        const balance = await provider.getBalance(wallet.address);
-        const gasEstimate = await stablecoinAVS.createNewCheckpoint.estimateGas(
-            0n, 0n, ethers.ZeroHash
+        // Simulate new price and calculate values
+        const newPrice = simulatePriceChange();
+        const collateralAmount = BigInt(10) * BigInt(10**18); // 10 ETH collateral
+        const totalCollateralValue = (newPrice * collateralAmount) / BigInt(10**18);
+        const totalStablecoinSupply = BigInt(15000) * BigInt(10**18); // 15000 stablecoins
+        
+        // Calculate current ratio
+        const collateralRatio = (totalCollateralValue * BigInt(100)) / totalStablecoinSupply;
+        
+        console.log(`
+            New ETH Price: $${ethers.formatEther(newPrice)}
+            Total Collateral Value: $${ethers.formatEther(totalCollateralValue)}
+            Collateral Ratio: ${collateralRatio}%
+        `);
+
+        // Create merkle root from state
+        const merkleRoot = ethers.keccak256(
+            ethers.AbiCoder.defaultAbiCoder().encode(
+                ["uint256", "uint256", "uint256"],
+                [newPrice, totalCollateralValue, totalStablecoinSupply]
+            )
         );
-        const gasPrice = await provider.getFeeData();
-        const gasCost = gasEstimate * gasPrice.gasPrice!;
-
-        if (balance < gasCost) {
-            console.error(`Insufficient funds. Have ${ethers.formatEther(balance)} ETH, need ${ethers.formatEther(gasCost)} ETH`);
-            return;
-        }
-
-        const { collateral, supply } = generateRandomValues();
-        const merkleRoot = ethers.keccak256(ethers.toUtf8Bytes("checkpoint")); 
 
         const tx = await stablecoinAVS.createNewCheckpoint(
-            collateral,
-            supply,
+            totalCollateralValue,
+            totalStablecoinSupply,
             merkleRoot,
-            { gasLimit: gasEstimate * 12n / 10n } // Add 20% buffer to gas estimate
+            { gasLimit: ethers.parseUnits("1000000", "wei") }
         );
         
         const receipt = await tx.wait();
         console.log(`Checkpoint created with hash: ${receipt.hash}`);
-        console.log(`Collateral Ratio: ${Number(collateral * BigInt(100) / supply)}%`);
+
+        // Alert if ratio is too low
+        if (collateralRatio < BigInt(150)) {
+            console.warn(`⚠️ WARNING: Low collateral ratio detected: ${collateralRatio}%`);
+        }
+
     } catch (error) {
         console.error('Error creating checkpoint:', error);
     }
 }
 
-// Create checkpoints every 30 seconds
-function startCreatingCheckpoints() {
-    setInterval(() => {
-        console.log("Creating new checkpoint...");
-        createNewCheckpoint();
-    }, 30000);
+async function startSimulation() {
+    console.log("Starting price simulation and checkpoint creation...");
+    console.log(`Initial ETH Price: $${ethers.formatEther(currentPrice)}`);
+    
+    for(let i = 0; i < 3; i++) {
+        await createNewCheckpoint();
+    }
 }
 
-// Start the process
-startCreatingCheckpoints(); 
+// Start the simulation
+startSimulation().catch(console.error); 

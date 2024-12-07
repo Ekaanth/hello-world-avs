@@ -9,29 +9,25 @@ import {ECDSAUpgradeable} from
     "@openzeppelin-upgrades/contracts/utils/cryptography/ECDSAUpgradeable.sol";
 import {IStablecoinAVSServiceManager} from "./IStablecoinAVSServiceManager.sol";
 import "./CollateralManager.sol";
-import {Vm} from "forge-std/Vm.sol";
 
 contract StablecoinAVSServiceManager is ECDSAServiceManagerBase, IStablecoinAVSServiceManager {
     using ECDSAUpgradeable for bytes32;
-
-    Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
-
+    
     // State variables
     CollateralManager public collateralManager;
     uint32 public latestCheckpointId;
     
-    // Monitoring thresholds
+    // Monitoring thresholds aligned with CollateralManager
     uint256 public constant MIN_COLLATERAL_RATIO = 150; // 150%
     uint256 public constant CRITICAL_COLLATERAL_RATIO = 130; // 130%
 
-    // Storage
-    mapping(uint32 => bytes32) public checkpointHashes;
-    mapping(uint32 => mapping(address => bool)) public validatorConfirmations;
     mapping(uint32 => CollateralCheckpoint) public checkpoints;
+    mapping(uint32 => mapping(address => bool)) public validatorConfirmations;
 
     event NewCheckpointCreated(uint32 indexed checkpointId, CollateralCheckpoint checkpoint);
     event CheckpointConfirmed(uint32 indexed checkpointId, address indexed validator);
     event CollateralWarning(uint32 indexed checkpointId, uint256 collateralRatio);
+    event LiquidationTriggered(address indexed position, uint256 collateralRatio);
 
     constructor(
         address _avsDirectory,
@@ -48,60 +44,52 @@ contract StablecoinAVSServiceManager is ECDSAServiceManagerBase, IStablecoinAVSS
         collateralManager = CollateralManager(_collateralManager);
     }
 
-    function createNewCheckpoint(
-        uint256 totalCollateralValue,
-        uint256 totalStablecoinSupply,
-        bytes32 merkleRoot
-    ) external returns (CollateralCheckpoint memory) {
-        CollateralCheckpoint memory newCheckpoint = CollateralCheckpoint({
-            timestamp: block.timestamp,
-            totalCollateralValue: totalCollateralValue,
-            totalStablecoinSupply: totalStablecoinSupply,
-            merkleRoot: merkleRoot
-        });
-
-        // Store checkpoint hash and emit event
-        checkpointHashes[latestCheckpointId] = keccak256(abi.encode(newCheckpoint));
-        checkpoints[latestCheckpointId] = newCheckpoint;
-        
-        emit NewCheckpointCreated(latestCheckpointId, newCheckpoint);
-        
-        // Check collateral ratio
-        uint256 collateralRatio = (totalCollateralValue * 100) / totalStablecoinSupply;
-        if (collateralRatio < MIN_COLLATERAL_RATIO) {
-            emit CollateralWarning(latestCheckpointId, collateralRatio);
-        }
-
-        latestCheckpointId++;
-        return newCheckpoint;
+function createNewCheckpoint(
+    uint256 totalCollateralValue,
+    uint256 totalStablecoinSupply,
+    bytes32 merkleRoot
+) external returns (CollateralCheckpoint memory) {
+    // Get current prices and calculate real collateral value
+    address[] memory activeCollateral = collateralManager.getActiveCollateral();
+    uint256 realCollateralValue = 0;
+    
+    for (uint256 i = 0; i < activeCollateral.length; i++) {
+        address token = activeCollateral[i];
+        uint256 amount = collateralManager.getTotalCollateralAmount(token);
+        uint256 price = collateralManager.priceOracle().getPrice(token);
+        realCollateralValue += amount * price;
     }
+
+    // Create checkpoint with real values
+    uint32 checkpointId = ++latestCheckpointId;
+    CollateralCheckpoint memory checkpoint = CollateralCheckpoint({
+        timestamp: block.timestamp,
+        totalCollateralValue: realCollateralValue,
+        totalStablecoinSupply: totalStablecoinSupply,
+        merkleRoot: merkleRoot
+    });
+
+    checkpoints[checkpointId] = checkpoint;
+    emit NewCheckpointCreated(checkpointId, checkpoint);
+    return checkpoint;
+}
 
     function confirmCheckpoint(
         uint32 checkpointId,
         CollateralCheckpoint calldata checkpoint,
         bytes memory signature
     ) external {
-        // Verify checkpoint hasn't been confirmed by this validator
-        require(
-            !validatorConfirmations[checkpointId][msg.sender],
-            "Already confirmed"
-        );
-
-        // Verify checkpoint matches stored hash
-        require(
-            keccak256(abi.encode(checkpoint)) == checkpointHashes[checkpointId],
-            "Invalid checkpoint data"
-        );
-
-        // Verify signature
+        require(checkpointId <= latestCheckpointId, "Invalid checkpoint ID");
+        require(!validatorConfirmations[checkpointId][msg.sender], "Already confirmed");
+        
         bytes32 messageHash = keccak256(abi.encode(
             checkpointId,
             checkpoint.totalCollateralValue,
             checkpoint.totalStablecoinSupply,
             checkpoint.merkleRoot
         ));
+
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-        
         require(
             ECDSAStakeRegistry(stakeRegistry).isValidSignature(
                 ethSignedMessageHash,
@@ -110,16 +98,22 @@ contract StablecoinAVSServiceManager is ECDSAServiceManagerBase, IStablecoinAVSS
             "Invalid signature"
         );
 
-        // Record confirmation
         validatorConfirmations[checkpointId][msg.sender] = true;
         emit CheckpointConfirmed(checkpointId, msg.sender);
+
+        // Check if liquidation is needed
+        uint256 collateralRatio = (checkpoint.totalCollateralValue * 100) / checkpoint.totalStablecoinSupply;
+        if (collateralRatio <= CRITICAL_COLLATERAL_RATIO) {
+            // Trigger liquidation through CollateralManager
+            emit LiquidationTriggered(msg.sender, collateralRatio);
+        }
     }
 
-    // Helper functions
     function getCheckpoint(uint32 checkpointId) external view returns (CollateralCheckpoint memory) {
+        require(checkpointId <= latestCheckpointId, "Invalid checkpoint ID");
         return checkpoints[checkpointId];
     }
-
+    
     function isCheckpointConfirmed(uint32 checkpointId, address validator) external view returns (bool) {
         return validatorConfirmations[checkpointId][validator];
     }

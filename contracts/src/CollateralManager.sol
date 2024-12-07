@@ -25,6 +25,10 @@ contract CollateralManager is ReentrancyGuardUpgradeable, OwnableUpgradeable {
         bool exists;
     }
 
+    // Add state variable
+    mapping(address => bool) public isActiveUser;
+    address[] private activeUsers;
+
     // Constants
     uint256 public constant MINIMUM_COLLATERAL_RATIO = 150; // 150%
     uint256 public constant LIQUIDATION_THRESHOLD = 130;    // 130%
@@ -71,6 +75,11 @@ contract CollateralManager is ReentrancyGuardUpgradeable, OwnableUpgradeable {
         });
         
         emit CollateralAdded(token, weight, minCollateral, maxCollateral);
+    }
+
+    // Add function
+    function getActiveUsers() public view returns (address[] memory) {
+        return activeUsers;
     }
 
     // Core functions
@@ -179,12 +188,33 @@ contract CollateralManager is ReentrancyGuardUpgradeable, OwnableUpgradeable {
         return (price * amount * collateralTypes[token].weight) / BASIS_POINTS;
     }
 
+
+    function getActiveCollateral() public view returns (address[] memory) {
+        address[] memory active = new address[](10); // Dynamic size based on your needs
+        uint256 count = 0;
+        
+        // Add active collateral tokens to array
+        for (uint256 i = 0; i < active.length; i++) {
+            if (collateralTypes[active[i]].isActive) {
+                active[count] = active[i];
+                count++;
+            }
+        }
+        
+        // Create correctly sized array
+        address[] memory result = new address[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = active[i];
+        }
+        return result;
+    }
+
     function isPositionHealthy(address user) public view returns (bool) {
         Position storage position = positions[user];
         if (!position.exists || position.mintedEigUSD == 0) return true;
 
         uint256 totalCollateralValue = 0;
-        address[] memory activeCollateral = getActiveCollateral();
+        address[] memory activeCollateral = this.getActiveCollateral();
 
         for (uint256 i = 0; i < activeCollateral.length; i++) {
             address token = activeCollateral[i];
@@ -195,11 +225,6 @@ contract CollateralManager is ReentrancyGuardUpgradeable, OwnableUpgradeable {
         }
 
         return totalCollateralValue >= (position.mintedEigUSD * MINIMUM_COLLATERAL_RATIO) / 100;
-    }
-
-    function getActiveCollateral() public view returns (address[] memory) {
-        // Implementation needed - returns array of active collateral token addresses
-        // This would maintain a dynamic array of active collateral tokens
     }
 
     function getPositionCollateralValue(address user) public view returns (uint256) {
@@ -215,5 +240,14 @@ contract CollateralManager is ReentrancyGuardUpgradeable, OwnableUpgradeable {
         }
 
         return totalValue;
+    }
+
+    function getTotalCollateralAmount(address token) external view returns (uint256) {
+        uint256 totalAmount = 0;
+        address[] memory users = getActiveUsers();  // You'll need to track active users
+        for (uint256 i = 0; i < users.length; i++) {
+            totalAmount += positions[users[i]].collateralAmounts[token];
+        }
+        return totalAmount;
     }
 }
