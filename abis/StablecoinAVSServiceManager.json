@@ -21,13 +21,57 @@
         "name": "_delegationManager",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "_collateralManager",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
   },
   {
     "type": "function",
-    "name": "allTaskHashes",
+    "name": "CRITICAL_COLLATERAL_RATIO",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_COLLATERAL_RATIO",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "avsDirectory",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "checkpointHashes",
     "inputs": [
       {
         "name": "",
@@ -46,13 +90,8 @@
   },
   {
     "type": "function",
-    "name": "allTaskResponses",
+    "name": "checkpoints",
     "inputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      },
       {
         "name": "",
         "type": "uint32",
@@ -61,25 +100,85 @@
     ],
     "outputs": [
       {
-        "name": "",
-        "type": "bytes",
-        "internalType": "bytes"
+        "name": "timestamp",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalCollateralValue",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalStablecoinSupply",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "merkleRoot",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "avsDirectory",
+    "name": "collateralManager",
     "inputs": [],
     "outputs": [
       {
         "name": "",
         "type": "address",
-        "internalType": "address"
+        "internalType": "contract CollateralManager"
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "confirmCheckpoint",
+    "inputs": [
+      {
+        "name": "checkpointId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "checkpoint",
+        "type": "tuple",
+        "internalType": "struct IStablecoinAVSServiceManager.CollateralCheckpoint",
+        "components": [
+          {
+            "name": "timestamp",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "totalCollateralValue",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "totalStablecoinSupply",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "merkleRoot",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ]
+      },
+      {
+        "name": "signature",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -135,29 +234,49 @@
   },
   {
     "type": "function",
-    "name": "createNewTask",
+    "name": "createNewCheckpoint",
     "inputs": [
       {
-        "name": "name",
-        "type": "string",
-        "internalType": "string"
+        "name": "totalCollateralValue",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalStablecoinSupply",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "merkleRoot",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [
       {
         "name": "",
         "type": "tuple",
-        "internalType": "struct IHelloWorldServiceManager.Task",
+        "internalType": "struct IStablecoinAVSServiceManager.CollateralCheckpoint",
         "components": [
           {
-            "name": "name",
-            "type": "string",
-            "internalType": "string"
+            "name": "timestamp",
+            "type": "uint256",
+            "internalType": "uint256"
           },
           {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
+            "name": "totalCollateralValue",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "totalStablecoinSupply",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "merkleRoot",
+            "type": "bytes32",
+            "internalType": "bytes32"
           }
         ]
       }
@@ -176,6 +295,47 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getCheckpoint",
+    "inputs": [
+      {
+        "name": "checkpointId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct IStablecoinAVSServiceManager.CollateralCheckpoint",
+        "components": [
+          {
+            "name": "timestamp",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "totalCollateralValue",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "totalStablecoinSupply",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "merkleRoot",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -211,7 +371,31 @@
   },
   {
     "type": "function",
-    "name": "latestTaskNum",
+    "name": "isCheckpointConfirmed",
+    "inputs": [
+      {
+        "name": "checkpointId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "validator",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "latestCheckpointId",
     "inputs": [],
     "outputs": [
       {
@@ -274,41 +458,6 @@
     "type": "function",
     "name": "renounceOwnership",
     "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "respondToTask",
-    "inputs": [
-      {
-        "name": "task",
-        "type": "tuple",
-        "internalType": "struct IHelloWorldServiceManager.Task",
-        "components": [
-          {
-            "name": "name",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
-          }
-        ]
-      },
-      {
-        "name": "referenceTaskIndex",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "signature",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -378,6 +527,68 @@
     "stateMutability": "nonpayable"
   },
   {
+    "type": "function",
+    "name": "validatorConfirmations",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "CheckpointConfirmed",
+    "inputs": [
+      {
+        "name": "checkpointId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "validator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CollateralWarning",
+    "inputs": [
+      {
+        "name": "checkpointId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "collateralRatio",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
     "type": "event",
     "name": "Initialized",
     "inputs": [
@@ -392,29 +603,39 @@
   },
   {
     "type": "event",
-    "name": "NewTaskCreated",
+    "name": "NewCheckpointCreated",
     "inputs": [
       {
-        "name": "taskIndex",
+        "name": "checkpointId",
         "type": "uint32",
         "indexed": true,
         "internalType": "uint32"
       },
       {
-        "name": "task",
+        "name": "checkpoint",
         "type": "tuple",
         "indexed": false,
-        "internalType": "struct IHelloWorldServiceManager.Task",
+        "internalType": "struct IStablecoinAVSServiceManager.CollateralCheckpoint",
         "components": [
           {
-            "name": "name",
-            "type": "string",
-            "internalType": "string"
+            "name": "timestamp",
+            "type": "uint256",
+            "internalType": "uint256"
           },
           {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
+            "name": "totalCollateralValue",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "totalStablecoinSupply",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "merkleRoot",
+            "type": "bytes32",
+            "internalType": "bytes32"
           }
         ]
       }
@@ -452,43 +673,6 @@
       },
       {
         "name": "newRewardsInitiator",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "TaskResponded",
-    "inputs": [
-      {
-        "name": "taskIndex",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "task",
-        "type": "tuple",
-        "indexed": false,
-        "internalType": "struct IHelloWorldServiceManager.Task",
-        "components": [
-          {
-            "name": "name",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
-          }
-        ]
-      },
-      {
-        "name": "operator",
         "type": "address",
         "indexed": false,
         "internalType": "address"

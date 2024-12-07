@@ -10,5 +10,6 @@
   "exclude": [
     "node_modules",
     "contracts"
-  ]
+  ],
+  "include": ["./typechain-types/**/*"]
 }
